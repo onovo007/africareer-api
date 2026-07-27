@@ -35,6 +35,26 @@ INDEX_NAME = "africareer-kb"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "").strip()
+
+
+def log_event(event, user_name="", country="", language="English", details=""):
+    """Best-effort analytics write to the shared Supabase `analytics` table (same one the pilot uses)."""
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return False
+    try:
+        with httpx.Client(timeout=4.0) as c:
+            r = c.post(
+                f"{SUPABASE_URL}/rest/v1/analytics",
+                headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}",
+                         "Content-Type": "application/json", "Prefer": "return=minimal"},
+                json={"timestamp": datetime.now().isoformat(), "event": event, "details": details or "",
+                      "user_name": user_name, "country": country, "language": language},
+            )
+        return r.status_code < 300
+    except Exception:
+        return False
 
 # ---------------------------------------------------------------- clients (lazy)
 _pc = None

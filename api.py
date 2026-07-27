@@ -114,10 +114,25 @@ class OpportunitiesIn(BaseModel):
     region: str = ""
 
 
+class EventIn(BaseModel):
+    event: str
+    user_name: str = ""
+    country: str = ""
+    language: str = "English"
+    details: str = ""
+
+
 # ------------------------------------------------------------------------ routes
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "africareer-api", "tavily": bool(core.TAVILY_API_KEY)}
+    return {"status": "ok", "service": "africareer-api", "tavily": bool(core.TAVILY_API_KEY),
+            "supabase": bool(core.SUPABASE_URL and core.SUPABASE_KEY)}
+
+
+@app.post("/event")
+def event(body: EventIn):
+    # Public (browser posts analytics); best-effort, never blocks.
+    return {"ok": core.log_event(body.event, body.user_name, body.country, body.language, body.details)}
 
 
 @app.post("/extract-text", dependencies=[Depends(require_auth)])
