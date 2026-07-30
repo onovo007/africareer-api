@@ -56,6 +56,62 @@ def log_event(event, user_name="", country="", language="English", details=""):
     except Exception:
         return False
 
+
+def admin_metrics(limit=5000):
+    """Read recent analytics rows from Supabase and aggregate them for the admin dashboard."""
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return {"ok": False, "error": "Supabase not configured"}
+    try:
+        with httpx.Client(timeout=12.0) as c:
+            r = c.get(
+                f"{SUPABASE_URL}/rest/v1/analytics",
+                headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                params={"select": "timestamp,event,user_name,country,language",
+                        "order": "timestamp.desc", "limit": str(limit)},
+            )
+        if r.status_code >= 300:
+            return {"ok": False, "error": f"Supabase read failed ({r.status_code})"}
+        rows = r.json()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+    from collections import Counter
+    users, ev, country, lang, daily = set(), Counter(), Counter(), Counter(), Counter()
+    for row in rows:
+        name = (row.get("user_name") or "").strip().lower()
+        ctry = (row.get("country") or "").strip()
+        key = name or ctry
+        if key:
+            users.add(key)
+        ev[(row.get("event") or "").strip() or "unknown"] += 1
+        if ctry:
+            country[ctry] += 1
+        lg = (row.get("language") or "").strip()
+        if lg:
+            lang[lg] += 1
+        ts = (row.get("timestamp") or "")[:10]
+        if ts:
+            daily[ts] += 1
+
+    def top(counter, n=15):
+        return [{"label": k, "count": v} for k, v in counter.most_common(n)]
+
+    recent = [{"timestamp": row.get("timestamp"), "event": row.get("event"),
+               "user_name": row.get("user_name"), "country": row.get("country"),
+               "language": row.get("language")} for row in rows[:25]]
+
+    return {
+        "ok": True,
+        "total_events": len(rows),
+        "unique_users": len(users),
+        "logins": ev.get("login", 0) + ev.get("user_visit", 0),
+        "events": top(ev),
+        "countries": top(country, 12),
+        "languages": top(lang, 10),
+        "daily": [{"date": d, "count": c} for d, c in sorted(daily.items())[-14:]],
+        "recent": recent,
+    }
+
 # ---------------------------------------------------------------- clients (lazy)
 _pc = None
 _index = None

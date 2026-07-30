@@ -30,12 +30,21 @@ app.add_middleware(
 )
 
 API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN", "").strip()
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
 
 
 def require_auth(x_api_key: str = Header(default="")):
     """Optional API-key gate. If API_AUTH_TOKEN is set, callers must send X-API-Key."""
     if API_AUTH_TOKEN and x_api_key != API_AUTH_TOKEN:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+def require_admin(x_admin_token: str = Header(default="")):
+    """Admin gate for the usage dashboard. Requires ADMIN_TOKEN to be set and matched."""
+    if not ADMIN_TOKEN:
+        raise HTTPException(status_code=503, detail="Admin dashboard not configured (set ADMIN_TOKEN)")
+    if x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid admin token")
 
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -133,6 +142,12 @@ def health():
 def event(body: EventIn):
     # Public (browser posts analytics); best-effort, never blocks.
     return {"ok": core.log_event(body.event, body.user_name, body.country, body.language, body.details)}
+
+
+@app.get("/admin/metrics", dependencies=[Depends(require_admin)])
+def admin_metrics():
+    """Aggregated usage metrics for the admin dashboard (requires X-Admin-Token)."""
+    return core.admin_metrics()
 
 
 @app.post("/extract-text", dependencies=[Depends(require_auth)])
