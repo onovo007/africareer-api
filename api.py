@@ -11,15 +11,37 @@ Env vars: OPENAI_API_KEY, PINECONE_API_KEY, TAVILY_API_KEY (optional),
 import io
 import os
 
-from fastapi import FastAPI, Header, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, Header, HTTPException, Depends, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 import core
 
 app = FastAPI(title="AfriCareer AI API", version="1.0.0")
 
+
+# ---- Rate limiting -------------------------------------------------------------
+# Key on the real client IP (X-Forwarded-For) so users behind Render's proxy are
+# throttled individually, not as one shared bucket. Limits are generous: a normal
+# user makes a handful of requests per session and will never hit them.
+def _client_ip(request: Request):
+    fwd = request.headers.get("x-forwarded-for")
+    return fwd.split(",")[0].strip() if fwd else get_remote_address(request)
+
+
+limiter = Limiter(key_func=_client_ip, default_limits=["30/minute", "300/hour"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+# CORS is added AFTER the limiter so it remains the OUTERMOST middleware and 429
+# responses still carry the CORS headers the browser needs in order to read them.
 _origins = [o.strip() for o in os.getenv("FRONTEND_ORIGIN", "*").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
@@ -131,8 +153,18 @@ class EventIn(BaseModel):
     details: str = ""
 
 
+class FeedbackIn(BaseModel):
+    rating: str              # "up" | "down"
+    tool: str = ""           # which tool the feedback is about (career_guidance, assistant, ...)
+    comment: str = ""
+    user_name: str = ""
+    country: str = ""
+    language: str = "English"
+
+
 # ------------------------------------------------------------------------ routes
 @app.get("/health")
+@limiter.exempt
 def health():
     return {"status": "ok", "service": "africareer-api", "tavily": bool(core.TAVILY_API_KEY),
             "supabase": bool(core.SUPABASE_URL and core.SUPABASE_KEY)}
@@ -142,6 +174,13 @@ def health():
 def event(body: EventIn):
     # Public (browser posts analytics); best-effort, never blocks.
     return {"ok": core.log_event(body.event, body.user_name, body.country, body.language, body.details)}
+
+
+@app.post("/feedback")
+def feedback(body: FeedbackIn):
+    # Public: pilot users rate AI answers; stored in the same Supabase analytics table.
+    details = f"rating={body.rating}; tool={body.tool}; comment={body.comment}".strip()
+    return {"ok": core.log_event("feedback", body.user_name, body.country, body.language, details)}
 
 
 @app.get("/admin/metrics", dependencies=[Depends(require_admin)])

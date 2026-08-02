@@ -164,8 +164,9 @@ def safe_llm_call(user_prompt, rag_context="", language="English"):
         return f"Error: {str(e)}"
 
 
-def retrieve_career_guidance(query, top_k=5):
-    """Retrieve grounding context from the Pinecone knowledge base."""
+def _retrieve(query, top_k=5):
+    """Retrieve grounding context AND the list of source documents from the Pinecone KB.
+    Returns (context_text, sources_list) so callers can cite only real, retrieved sources."""
     index, embeddings, _ = _clients()
     try:
         query_vec = embeddings.embed_query(query)
@@ -176,12 +177,17 @@ def retrieve_career_guidance(query, top_k=5):
                 pieces.append(match["metadata"]["text"])
                 if "source" in match["metadata"]:
                     sources.append(match["metadata"]["source"])
-        context = "\n\n".join(pieces) if pieces else ""
-        if sources:
-            context += f"\n\n[Sources: {', '.join(sorted(set(sources)))}]"
-        return context
+        return ("\n\n".join(pieces) if pieces else ""), sorted(set(sources))
     except Exception:
-        return ""
+        return "", []
+
+
+def retrieve_career_guidance(query, top_k=5):
+    """Retrieve grounding context from the Pinecone knowledge base (with a trailing [Sources] line)."""
+    context, sources = _retrieve(query, top_k)
+    if context and sources:
+        context += f"\n\n[Sources: {', '.join(sources)}]"
+    return context
 
 
 # ------------------------------------------------------------ verified web links
@@ -543,19 +549,80 @@ def generate_premium_cover_letter_docx(letter_json_str):
 
 # ---------------------------------------------------------- high-level operations
 def career_guidance(answers, language="English"):
-    """Career roadmap text from the 5-question profile."""
-    ctx = retrieve_career_guidance(f"career paths employment skills development Africa {answers[:100]}")
-    prompt = (f"Provide career guidance for African youth based on their profile.\n\n"
-              f"Their Answers: {answers}\n\n"
-              "Provide:\n1. Top 3 Career Paths in Africa (with reasons)\n"
-              "2. Key Skills to Develop (7-10 with brief explanations)\n"
-              "3. Action Plan (5 concrete steps)\n\n"
-              "Ground advice in African job-market realities and cite frameworks when applicable.")
+    """Career roadmap from the 5-question profile: paths, skills, a timeline/Gantt, and grounded citations."""
+    ctx, sources = _retrieve(f"career paths employment skills development Africa {answers[:100]}")
+    sources_str = "; ".join(sources) if sources else "none"
+    prompt = (
+        "Create a practical career roadmap for an African student/professional from their 5-answer profile. "
+        "Write in clean Markdown and use EXACTLY these numbered sections:\n\n"
+        f"Their Answers: {answers}\n\n"
+        "1. **Top 3 Career Paths in Africa** - each with a one-line reason grounded in African labour-market realities.\n"
+        "2. **Key Skills to Develop** - 7-10 skills, each with a brief why.\n"
+        "3. **Action Plan & Timeline** - 5-6 sequenced steps across ~12-18 months. First give a Markdown table "
+        "with columns: | Phase | Action | Timeline | Key Milestone |. Then, directly below it, add a compact visual "
+        "Gantt chart inside a fenced code block so the schedule is seen at a glance, in exactly this style "
+        "(shade the active months with the full block, idle months with the light shade):\n"
+        "```\n"
+        "Month        1   3   6   9   12  15  18\n"
+        "Phase 1      ██████░░░░░░░░░░░░\n"
+        "Phase 2      ░░░░██████░░░░░░░░\n"
+        "Phase 3      ░░░░░░░░██████░░░░\n"
+        "```\n"
+        "4. **Alignment with Global Frameworks** - justify the recommendations by citing ONLY the documents listed in "
+        "AVAILABLE SOURCES below; for each, state in 1-2 sentences the specific point it supports (e.g., "
+        "'AfDB SEPA prioritises STEM and technical skills for youth employability, which supports Step 4 above'). "
+        "If AVAILABLE SOURCES is 'none', write ONE sentence noting the guidance reflects widely-recognised AfDB SEPA, "
+        "UNICEF, ILO and UNESCO principles on youth skills and employment, and do NOT cite any specific document, "
+        "page, or statistic.\n"
+        "5. **References** - bullet-list the exact documents you cited from AVAILABLE SOURCES. "
+        "Omit this section entirely if AVAILABLE SOURCES is 'none'.\n\n"
+        f"AVAILABLE SOURCES (the only documents you may cite by name): {sources_str}\n\n"
+        "Be encouraging, specific and realistic for the African context. "
+        "NEVER invent citations, statistics, institutions, or sources that are not listed in AVAILABLE SOURCES."
+    )
     return safe_llm_call(prompt, ctx, language)
 
 
 def assistant_answer(question, language="English"):
-    return safe_llm_call(question, retrieve_career_guidance(question), language)
+    """Grounded answer: knowledge-base context + framework citations + live, verified links."""
+    ctx, sources = _retrieve(question)
+    sources_str = "; ".join(sources) if sources else "none"
+
+    # Live, verified links relevant to the question (scholarships, jobs, courses, programmes).
+    # Tavily returns real, current URLs (not model-invented); we additionally verify each is
+    # reachable so only sound links reach the user. Short timeout keeps the answer responsive.
+    verified = []
+    for item in web_search_links(question, max_results=6):
+        url = item.get("url", "")
+        if url and verify_url(url, timeout=4.0):
+            verified.append(item)
+        if len(verified) >= 4:
+            break
+    links_block = "\n".join(f"- {i['title']}: {i['url']}" for i in verified) if verified else "none"
+
+    # Live research summary for current facts (deadlines, programme names) where available.
+    research = web_research(question, max_results=4)
+
+    prompt = (
+        "Answer the user's career, education, scholarship or job question for an African audience. "
+        "Be practical, specific and encouraging. Use clear Markdown.\n\n"
+        f"USER QUESTION: {question}\n\n"
+        "GROUNDING RULES (follow strictly):\n"
+        "1. Base the guidance on the CONTEXT FROM AUTHORITATIVE SOURCES provided; when you use a point from it, cite the "
+        "framework by name (AfDB SEPA, UNICEF, ILO or UNESCO) that AVAILABLE SOURCES confirms.\n"
+        "2. Use the LIVE RESEARCH notes for current facts. Do NOT state a specific deadline, amount, or programme detail "
+        "unless it appears in LIVE RESEARCH; otherwise advise the user to confirm on the official page.\n"
+        "3. End with a '**Helpful links**' section listing ONLY the URLs under VERIFIED LINKS, each as a Markdown link. "
+        "If VERIFIED LINKS is 'none', omit that section and instead name the official portals to search. "
+        "NEVER invent, guess, or modify a URL.\n"
+        "4. Keep an African lens, but if the topic is global (e.g. U.S. scholarships) give accurate global guidance "
+        "tailored to African applicants.\n\n"
+        f"AVAILABLE SOURCES (frameworks you may cite by name): {sources_str}\n\n"
+        f"LIVE RESEARCH (today's web findings; may be 'none'):\n{research or 'none'}\n\n"
+        f"VERIFIED LINKS (the only URLs you may include):\n{links_block}\n\n"
+        f"Answer in {language}."
+    )
+    return safe_llm_call(prompt, ctx, language)
 
 
 def analyze_resume(resume_text, city="", additional_info="", language="English"):
