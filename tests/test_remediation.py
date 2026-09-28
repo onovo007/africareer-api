@@ -173,5 +173,16 @@ class RemediationTests(unittest.TestCase):
   sections,_=check_sections([{'text':h+'\n'+'a'*360} for h in rules['headings']],rules)
   self.assertEqual(sections[0]['text'],'a'*360)
 
+ def test_legacy_wildcard_cors_cannot_override_production_default(self):
+  self.assertEqual(api.cors_origins('*'),['https://africareer.quantiuminsights.com'])
+  self.assertEqual(api.cors_origins('*, https://approved.example/'),['https://approved.example'])
+
+ def test_guidance_cannot_present_unverified_free_course_claim(self):
+  from quality import remove_unverified_free_course_claims
+  result=remove_unverified_free_course_claims('Build a portfolio.\nCoursera and edX offer free courses.\nPractise Excel.')
+  self.assertNotIn('offer free courses',result)
+  self.assertIn('prices are unverified',result)
+  self.assertIn('Practise Excel.',result)
+
 if __name__=='__main__':unittest.main()
 
