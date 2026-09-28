@@ -81,3 +81,7 @@ class CoverageTests(unittest.TestCase):
   from job_verification import explicitly_unavailable
   self.assertTrue(explicitly_unavailable('<h1>Job Not Found</h1><p>This posting may have been closed or removed.</p>','Data Scientist'))
   self.assertFalse(explicitly_unavailable('<script>const label="Job Not Found"</script><h1>Data Scientist</h1>','Data Scientist'))
+
+ def test_remote_job_no_field_excluded(self):
+  from job_discovery import vacancy_candidate
+  self.assertFalse(vacancy_candidate({'title':'Data Scientist','url':'https://www.usajobs.gov/job/123','content':'Remote job : No Relocation: No'},'Remote'))
