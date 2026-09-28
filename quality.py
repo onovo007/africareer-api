@@ -34,6 +34,32 @@ def primary_source(metadata):
     return f"{metadata['title']} — page {metadata['page']} — {url}"
 
 
+def validate_cv_details(cv, supplied):
+    """Keep experience/project bullets extractive; enforce stated skill levels."""
+    norm=lambda s:' '.join(re.findall(r'\w+',str(s).casefold()))
+    source=norm(supplied)
+    for section in ('work_experience','projects'):
+        for item in cv.get(section,[]):
+            if isinstance(item,dict):
+                for bullet in item.get('bullets',[]):
+                    if norm(bullet) and norm(bullet) not in source:
+                        raise DraftValidationError('Copy experience/project detail directly from the supplied facts; do not expand or paraphrase it: '+bullet[:240])
+    output=norm(json.dumps(cv,ensure_ascii=False))
+    for match in re.finditer(r'\b(beginner|intermediate|advanced|fluent|conversational|native)\s+([A-Za-z][A-Za-z +#]{0,24})(?=[,;.\n]|$)',supplied,re.I):
+        if norm(match.group(0)) not in output:
+            raise DraftValidationError('Preserve the supplied skill level: '+match.group(0))
+    for match in re.finditer(r'\b([A-Za-z][A-Za-z +#]{0,24})\s+(beginner|intermediate|advanced|fluent|conversational|native)\b',supplied,re.I):
+        if norm(match.group(0)) not in output:
+            raise DraftValidationError('Preserve the supplied skill level: '+match.group(0))
+    return cv
+
+def restrict_answer_links(answer, allowed):
+    """Model-generated destinations must have been supplied, not guessed."""
+    allowed=set(allowed)
+    answer=re.sub(r'\[([^\]]+)\]\((https?://[^\s)]+)\)',
+                  lambda m:m.group(0) if m.group(2) in allowed else m.group(1)+' (link not verified)',answer)
+    return re.sub(r'https?://[^\s<>\])]+',lambda m:m.group(0) if m.group(0).rstrip('.,;') in allowed else '[unverified link omitted]',answer)
+
 def job_matches(result, role, location='', experience='', work_mode='', discipline=''):
     """Conservative text match; still not proof of an open vacancy or eligibility."""
     url = urlparse(result.get('url', ''))

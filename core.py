@@ -684,6 +684,13 @@ def assistant_answer(question, language="English", include_evidence=False):
     answer = safe_llm_call(prompt, ctx, language)
     if not sources:
         answer = "**Source status: no verified primary document was retrieved. This is general guidance, not verified policy evidence.**\n\n" + answer
+    from quality import restrict_answer_links
+    allowed=[item['url'] for item in verified]
+    allowed += re.findall(r'https?://[^\s]+', '\n'.join(sources))
+    answer=restrict_answer_links(answer,allowed)
+    requested={'ILO':'ilo','African Development Bank':'african development bank','UNICEF':'unicef','UNESCO':'unesco'}
+    missing=[name for name,term in requested.items() if (term in question.lower() or (name=='African Development Bank' and 'afdb' in question.lower())) and term not in sources_str.lower() and not (name=='African Development Bank' and 'afdb' in sources_str.lower())]
+    if missing:answer='**Source coverage:** No verified document retrieved from '+', '.join(missing)+'. No page-level support is claimed for those organisations.\n\n'+answer
     return {"text": answer, "evidence": evidence_status(sources, verified, bool(TAVILY_API_KEY))} if include_evidence else answer
 
 
@@ -721,7 +728,9 @@ def draft_cv_from_resume(resume_text, feedback="", language="English"):
               "Feedback is editorial advice, NEVER evidence of an achievement. Use numbers, languages and proficiency levels ONLY as supplied in the original resume. "
               "Do not infer metrics, duration of experience, budgets, impact, certifications or skills. Preserve all dates and beginner levels. "
               "Improve wording without adding facts; never use placeholder brackets; return ONLY the JSON.")
-    cv = audited_draft(prompt, resume_text, document_llm_call, _extract_json, validator=checked_cv)
+    from quality import validate_cv_details
+    prompt+=' Experience and project bullets must be exact excerpts copied from the supplied facts. Do not rewrite or expand those bullets. Keep every supplied skill and its proficiency wording.'
+    cv = audited_draft(prompt, resume_text, document_llm_call, _extract_json, validator=lambda d:validate_cv_details(checked_cv(d),resume_text))
     return checked_cv(cv)
 
 
@@ -737,7 +746,9 @@ def draft_cv_from_answers(answers, full_name="", contact_line="", language="Engl
               "Preserve expected graduation dates and student status; include volunteer work and projects with their dates. "
               "Preserve language proficiency verbatim. Do not turn fluent into native or beginner into proficient. "
               "NEVER output placeholder brackets like [Your Name] - omit unknown fields; return ONLY the JSON.")
-    cv = audited_draft(prompt, answers + '\n' + full_name + '\n' + contact_line, document_llm_call, _extract_json, validator=checked_cv)
+    from quality import validate_cv_details
+    prompt+=' Experience and project bullets must be exact excerpts copied from the supplied facts. Do not rewrite or expand those bullets. Keep every supplied skill and its proficiency wording.'
+    cv = audited_draft(prompt, answers + '\n' + full_name + '\n' + contact_line, document_llm_call, _extract_json, validator=lambda d:validate_cv_details(checked_cv(d),answers))
     cv['education_first'] = bool(re.search(r'\b(student|expected|undergraduate)\b', answers, re.I))
     cv['full_name'] = full_name
     cv['contact_line'] = contact_line

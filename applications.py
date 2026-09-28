@@ -47,6 +47,8 @@ def check_sections(sections,rules):
         if not isinstance(body,str) or not body.strip():
             raise DraftValidationError('An application section is empty. Add relevant background and retry.')
         body=body.strip()
+        # Models sometimes repeat the UI heading inside the answer body.
+        body=re.sub(r'^\s*(?:#{1,6}\s*)?'+re.escape(heading)+r'\s*[:\n]+\s*','',body,flags=re.I)
         if rules['format']=='ucas' and len(body)<350:
             raise DraftValidationError('Each UCAS answer must contain at least 350 characters. Add specific examples and retry.')
         output.append(dict(heading=heading,text=body,characters=len(body),words=len(body.split())))
