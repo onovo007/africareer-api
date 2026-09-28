@@ -44,7 +44,8 @@ def checked_posting(html,url,role,location='',experience='',work_mode='',discipl
    remote=str(job.get('jobLocationType','')).upper()=='TELECOMMUTE'
    eligibility=json.dumps(job.get('applicantLocationRequirements',{}),ensure_ascii=False)
    # A country in the company description does not establish workplace eligibility.
-   if location and not job_matches({'url':url,'title':loc+' '+eligibility},location):continue
+   location_scope=eligibility if remote and job.get('applicantLocationRequirements') else loc
+   if location and not job_matches({'url':url,'title':location_scope},location):continue
    if work_mode=='Remote' and not remote:continue
    if work_mode=='On-site' and (remote or not job.get('jobLocation')):continue
    description=unescape(re.sub('<[^>]+>',' ',str(job.get('description',''))))

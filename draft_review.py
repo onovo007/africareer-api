@@ -27,12 +27,26 @@ def audited_draft(prompt, supplied, generate, parse, context='', completeness=Tr
                 'Future expected graduation is valid when clearly marked expected. '
                 'A supplied recent completion date must be preserved; do not substitute an earlier year. '
                 +('Reject omission of supplied qualifications, dates, experience and proficiency qualifiers. ' if completeness else 'A selective letter may omit irrelevant experience. Proposed research must be clearly prospective, not claimed completed work. ')+
-                'Return ONLY JSON {"passed": true or false, "issues": ["specific issue"]}. '
+                'Before deciding, enumerate every concrete personal claim, including clauses inside longer sentences. '
+                'For each claim, quote its exact supporting words from SUPPLIED FACTS. Use an empty evidence string when absent and flag an issue. '
+                'For example, secondary school in Ghana does NOT support studied mathematical problems, an encouraging school environment, additional resources, or particular subjects. '
+                'A quiz for 12 classmates does NOT establish that the entire class had 12 students. '
+                'Only clearly future proposals may have prospective=true and no evidence. '
+                'Return ONLY JSON {"passed": true or false, "issues": ["specific issue"], "claims": [{"claim":"draft claim", "evidence":"exact supplied quote", "prospective":false}]}. '
                 'Pass only if there are no issues. Do not provide a confidence score.\n'
                 'SUPPLIED FACTS:\n'+supplied+'\nDRAFT:\n'+json.dumps(draft,ensure_ascii=False))
             review=parse(generate(review_prompt,'','English'))
             if not isinstance(review,dict) or review.get('passed') is not True or review.get('issues')!=[]:
                 raise DraftValidationError('Factual review flagged: '+str(review.get('issues',[]) if isinstance(review,dict) else 'invalid review')[:1200])
+            claims=review.get('claims')
+            if not isinstance(claims,list) or not claims:
+                raise DraftValidationError('Factual review did not supply a claim evidence ledger.')
+            for claim in claims:
+                if not isinstance(claim,dict):raise DraftValidationError('Invalid claim evidence ledger.')
+                if claim.get('prospective') is True:continue
+                evidence=claim.get('evidence','')
+                if not isinstance(evidence,str) or not evidence.strip() or evidence not in supplied:
+                    raise DraftValidationError('Personal claim lacks an exact supplied source: '+str(claim.get('claim',''))[:300])
             return draft
         except (ValueError,TypeError,KeyError) as error:
             problems='Revise the draft to resolve these checks without inventing replacement facts: '+str(error)[:1400]
