@@ -4,6 +4,51 @@ from datetime import datetime,timezone,timedelta
 from html import unescape
 from html.parser import HTMLParser
 from quality import job_matches
+from urllib.parse import urlencode,urlparse
+
+def search_links(role,discipline='',location='',work_mode='',**ignored):
+ keywords=' '.join(x.strip() for x in (role,discipline,work_mode if work_mode!='Any' else '') if x.strip())
+ return [dict(title='Search Indeed',url='https://www.indeed.com/jobs?'+urlencode({'q':keywords,'l':location}),source='indeed.com'),
+         dict(title='Search LinkedIn',url='https://www.linkedin.com/jobs/search/?'+urlencode({'keywords':keywords,'location':location}),source='linkedin.com')]
+
+def mentions(text,criterion):
+ text=' '+re.sub(r'[^a-z0-9]+',' ',text.lower())+' '
+ terms=re.findall(r'[a-z0-9]+',criterion.lower())
+ aliases={'maryland':['maryland','md'],'kenya':['kenya','ke'],'nigeria':['nigeria','ng'],
+          'united states':['united states','usa','us'],'united kingdom':['united kingdom','uk']}
+ if criterion.lower() in aliases:return any(' '+x+' ' in text for x in aliases[criterion.lower()])
+ return all(' '+t+' ' in text or (t.endswith('s') and ' '+t[:-1]+' ' in text) for t in terms if t not in ('and','or','in','the','years'))
+
+def discovery_lead(result,role,location='',experience='',work_mode='',discipline='',period='',page_read=False):
+ title=' '.join(str(result.get('title','')).split())
+ snippet=' '.join(str(result.get('content','')).split())
+ text=title+' '+snippet
+ if not mentions(text,role):return None
+ if re.search(r'\b(no longer accepting applications|position (?:has been |is )filled|job (?:has )?expired|vacancy closed)\b',text,re.I):return None
+ parsed=urlparse(result['url'])
+ if parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password:return None
+ board=any(x in parsed.path.lower() for x in ('/search','-jobs','/jobs.html')) or parsed.path.rstrip('/')=='/jobs'
+ criteria={'Location':location,'Experience':experience,'Work mode':work_mode,'Discipline':discipline}
+ noted=[f'{key}: {value} '+('(mentioned in search text)' if mentions(text,value) else '(not established)')
+        for key,value in criteria.items() if value and not value.lower().startswith('any')]
+ if period and period!='Any time':noted.append('Posting date: not established; search recency is not a vacancy date')
+ return dict(title=title or 'Job search lead',url=result['url'],source=parsed.hostname,
+             snippet=snippet[:500],verification_level='board_search' if board else 'discovery',
+             filter_notes=noted,verification=('Search results page, not an individual vacancy. ' if board else 'Search-index lead; current opening and eligibility are not confirmed. ')+
+             ('Page readable, but complete matching metadata was not available.' if page_read else 'Source page could not be independently read; it may require sign-in or block automated access.'))
+
+def explicitly_unavailable(html,role,work_mode='',now=None):
+ now=now or datetime.now(timezone.utc);parser=JobSchemaParser();parser.feed(html)
+ relevant=[]
+ for script in parser.scripts:
+  try:data=json.loads(script)
+  except (ValueError,TypeError):continue
+  for job in records(data):
+   if not mentions(str(job.get('title','')),role):continue
+   end=timestamp(job.get('validThrough'))
+   mode=str(job.get('jobLocationType','')).upper()
+   relevant.append(bool(end and end<now) or (work_mode=='On-site' and mode=='TELECOMMUTE') or (work_mode=='Remote' and mode in ('ON_SITE','ONSITE')))
+ return bool(relevant) and all(relevant)
 
 class JobSchemaParser(HTMLParser):
  def __init__(self):super().__init__();self.capture=False;self.buffer=[];self.scripts=[]
@@ -45,7 +90,7 @@ def checked_posting(html,url,role,location='',experience='',work_mode='',discipl
    eligibility=json.dumps(job.get('applicantLocationRequirements',{}),ensure_ascii=False)
    # A country in the company description does not establish workplace eligibility.
    location_scope=eligibility if remote and job.get('applicantLocationRequirements') else loc
-   if location and not job_matches({'url':url,'title':location_scope},location):continue
+   if location and not mentions(location_scope,location):continue
    if work_mode=='Remote' and not remote:continue
    if work_mode=='On-site' and (remote or not job.get('jobLocation')):continue
    description=unescape(re.sub('<[^>]+>',' ',str(job.get('description',''))))

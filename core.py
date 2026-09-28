@@ -869,34 +869,49 @@ def find_jobs(role, discipline="", location="", experience="", work_mode="",
     """Return matching discovery leads, never a guarantee of open vacancy status."""
     yr = datetime.now().year
     parts = [role]
-    for extra in (discipline, experience, work_mode):
+    for extra in (discipline, work_mode):
         if extra and not extra.lower().startswith("any"):
             parts.append(extra)
     parts.append("jobs")
     if location:
         parts.append("in " + location)
-    parts.append(f"{yr} apply")
+    parts.append("apply")
     query = " ".join(parts)
     time_range = {"Past 24 hours": "day", "Past week": "week", "Past month": "month"}.get(period, "")
-    results = web_job_search(query, time_range=time_range, domains=_JOB_BOARDS, max_results=8)
+    warnings=[]
+    try:
+        results = web_job_search(query, time_range=time_range, max_results=12)
+    except RuntimeError:
+        results=[]
+        warnings.append("Live search is unavailable. Continue with the job-board searches below.")
     if include_ngo:
-        results += web_job_search(query + " NGO OR United Nations OR international organization",
-                                  time_range=time_range, domains=_NGO_IO_BOARDS, max_results=8)
+        try:
+            results += web_job_search(query + " NGO OR United Nations OR international organization",
+                                      time_range=time_range, domains=_NGO_IO_BOARDS, max_results=4)
+        except RuntimeError:
+            warnings.append("The additional NGO search could not complete.")
     seen, uniq = set(), []
     for r in results:
         u = r.get("url", "")
         if u and u not in seen:
             seen.add(u); uniq.append(r)
-    from link_safety import public_html
-    from job_verification import checked_posting
+    from link_safety import public_html, public_target
+    from job_verification import checked_posting, discovery_lead, explicitly_unavailable, search_links
     def inspect(result):
+        try: public_target(result['url'])
+        except (ValueError,OSError,UnicodeError):return None
         html=public_html(result['url'],timeout=5)
-        if not html:return None
-        details=checked_posting(html,result['url'],role,location,experience,work_mode,discipline,period)
-        if not details:return None
-        return {**details,'url':result['url'],'source':urlparse(result['url']).hostname,'verification_level':'posting_metadata'}
+        if html:
+            details=checked_posting(html,result['url'],role,location,experience,work_mode,discipline,period)
+            if details:return {**details,'url':result['url'],'source':urlparse(result['url']).hostname,'verification_level':'posting_metadata'}
+            if explicitly_unavailable(html,role,work_mode):return None
+        return discovery_lead(result,role,location,experience,work_mode,discipline,period,page_read=bool(html))
     with ThreadPoolExecutor(max_workers=4) as pool:
-        return [r for r in pool.map(inspect,uniq) if r]
+        found=[r for r in pool.map(inspect,uniq[:16]) if r]
+    found.sort(key=lambda r: {'posting_metadata':0,'discovery':1,'board_search':2}[r['verification_level']])
+    return {'results':found,'search_links':search_links(role,discipline,location,work_mode),'warnings':warnings,
+            'status':'partial' if warnings else 'complete',
+            'notice':'Only posting-details-checked results have evidence for every selected filter. Other leads may not meet your requirements. Confirm location eligibility, posting date and work mode on the source page.'}
 
 
 

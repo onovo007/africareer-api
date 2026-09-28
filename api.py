@@ -331,8 +331,8 @@ def courses(body: CoursesIn):
 
 @app.post("/jobs", dependencies=[Depends(require_auth)])
 def jobs(body: JobsIn):
-    return {"results": core.find_jobs(body.role, body.discipline, body.location, body.experience,
-                                      body.work_mode, body.period, body.include_ngo)}
+    return core.find_jobs(body.role, body.discipline, body.location, body.experience,
+                          body.work_mode, body.period, body.include_ngo)
 
 
 @app.post("/opportunities", dependencies=[Depends(require_auth)])
