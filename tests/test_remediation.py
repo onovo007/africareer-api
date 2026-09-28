@@ -40,7 +40,7 @@ class RemediationTests(unittest.TestCase):
    core.assistant_answer('USER-EDITED NOTEBOOK\nPrivate fictional name\nCURRENT USER MESSAGE\nFind scholarships')
   self.assertEqual(search.call_args.args[0],'Find scholarships')
  def test_factual_review_catches_word_claim_and_repairs(self):
-  values=iter([json.dumps({'professional_summary':'Award-winning analyst'}),json.dumps({'passed':False,'issues':['No award supplied']}),json.dumps({'professional_summary':'Analyst'}),json.dumps({'passed':True,'issues':[]})])
+  values=iter([json.dumps({'professional_summary':'Award-winning analyst'}),json.dumps({'passed':False,'issues':['No award supplied']}),json.dumps({'professional_summary':'Analyst'}),json.dumps({'passed':True,'issues':[],'claims':[{'claim':'Analyst','evidence':'Analyst','prospective':False}]})])
   self.assertEqual(audited_draft('CV','Analyst',lambda *a:next(values),json.loads)['professional_summary'],'Analyst')
  def test_malformed_or_failed_audit_fails_closed(self):
   with self.assertRaises(DraftValidationError):
@@ -109,6 +109,12 @@ class RemediationTests(unittest.TestCase):
   self.assertIsNone(check(dict(job,validThrough='2026-09-20')))
   self.assertIsNone(check(dict(job,datePosted=None)))
   self.assertIsNone(check(dict(job,jobLocationType='ON_SITE')))
+  self.assertIsNone(check(dict(job,applicantLocationRequirements={'@type':'Country','name':'United States'})))
+
+ def test_factual_review_rejects_fabricated_source_quote(self):
+  values=iter([json.dumps({'professional_summary':'Analyst'}),json.dumps({'passed':True,'issues':[],'claims':[{'claim':'Analyst','evidence':'Made up source','prospective':False}]})]*3)
+  with self.assertRaises(DraftValidationError):
+   audited_draft('CV','Analyst',lambda *a:next(values),json.loads)
 
 
  def test_legacy_course_price_alias_never_invokes_model(self):
@@ -147,3 +153,4 @@ class RemediationTests(unittest.TestCase):
   self.assertEqual(self.client.post('/cv/document',json=body).status_code,422)
 
 if __name__=='__main__':unittest.main()
+
