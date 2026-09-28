@@ -773,6 +773,11 @@ def build_motivation_letter(category, school, programme, background, prog_info='
 
 def find_courses(interest, level="Beginner", cost_pref="Free & Paid"):
     """Price-filtered results require a current primary-page review."""
+    aliases={'free':'Free only','free only':'Free only','paid':'Paid only','paid only':'Paid only','free & paid':'Free & Paid'}
+    cost_pref=aliases.get(cost_pref.strip().lower())
+    if not cost_pref:
+        from quality import DraftValidationError
+        raise DraftValidationError('Choose Free only, Paid only, or Free & Paid.')
     reviewed = reviewed_courses(interest, level, cost_pref)
     if cost_pref in ('Free only', 'Paid only'):
         return [c for c in reviewed if verify_url(c['url'])]
