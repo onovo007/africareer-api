@@ -48,6 +48,7 @@ output=Path('/tmp/africareer-model-comparison.json')
 for name,baseline,task in cases:
  for model in [baseline,'gpt-6-sol']+(['gpt-6-astra'] if name.startswith('phd_') else []):
   log=[];core._llm_client=lambda:Adapter(model,False,log);core._document_llm_client=lambda:Adapter(model,True,log)
+  core._configured_llm=lambda _selected,document=False:Adapter(model,document,log)
   start=time.monotonic();entry={'case':name,'model':model,'reasoning':'low' if model=='gpt-6-astra' else 'none','calls':log}
   try:entry['output']=task();entry['status']='passed_pipeline'
   except Exception as e:entry['status']='failed_pipeline';entry['error']=str(e)[:1600]
