@@ -56,3 +56,13 @@ class CoverageTests(unittest.TestCase):
  def test_plural_role_match(self):
   from job_verification import mentions
   self.assertTrue(mentions('Data Scientists','Data Scientist'))
+
+ def test_runtime_modules_in_container(self):
+  import ast
+  from pathlib import Path
+  root=Path(__file__).resolve().parents[1]
+  docker=(root/'Dockerfile').read_text()
+  for file in ('core.py','job_verification.py','job_discovery.py'):
+   for node in ast.walk(ast.parse((root/file).read_text(encoding='utf-8'))):
+    if isinstance(node,ast.ImportFrom) and node.module and (root/(node.module+'.py')).exists():
+     self.assertIn(node.module+'.py',docker)
