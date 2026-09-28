@@ -125,4 +125,25 @@ class RemediationTests(unittest.TestCase):
  def test_phd_search_excludes_traineeship_with_doctoral_eligibility(self):
   self.assertFalse(opportunity_matches({'title':'ECDC Traineeship Programme 2027', 'content':'Public health graduates with a PhD may apply in Europe', 'url':'https://example.org/apply'},'PhD / Doctorate','public health','Europe'))
 
+ def test_cv_project_objects_render_content_not_dictionary_keys(self):
+  raw=core.generate_premium_cv_docx(json.dumps({'full_name':'Test Student','projects':[{'title':'Survey dashboard','dates':'2026','bullets':['Cleaned 300 fictional records']}]}))
+  text='\n'.join(p.text for p in Document(io.BytesIO(raw)).paragraphs)
+  self.assertIn('Survey dashboard | 2026',text)
+  self.assertIn('Cleaned 300 fictional records',text)
+  self.assertNotIn('titledatesbullets',text)
+
+ def test_cv_review_export_preserves_project_and_blocks_invented_number(self):
+  cv={'full_name':'Student','projects':[{'title':'Survey','dates':'2026','bullets':['Cleaned 300 records']}],'languages':['English fluent']}
+  body={'cv':cv,'supplied_facts':'Student cleaned 300 records in 2026. English fluent.','confirmed':False}
+  self.assertEqual(self.client.post('/cv/document',json=body).status_code,422)
+  body['confirmed']=True
+  r=self.client.post('/cv/document',json=body)
+  self.assertEqual(r.status_code,200)
+  self.assertIn('Cleaned 300 records','\n'.join(p.text for p in Document(io.BytesIO(r.content)).paragraphs))
+  body['cv']['projects'][0]['bullets']=['Cleaned 900 records']
+  self.assertEqual(self.client.post('/cv/document',json=body).status_code,409)
+ def test_cv_export_rejects_malformed_nested_fields(self):
+  body={'cv':{'work_experience':[{'title':['wrong type']}]},'supplied_facts':'Analyst','confirmed':True}
+  self.assertEqual(self.client.post('/cv/document',json=body).status_code,422)
+
 if __name__=='__main__':unittest.main()
