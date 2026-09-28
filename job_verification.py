@@ -17,7 +17,7 @@ def mentions(text,criterion):
  aliases={'maryland':['maryland','md'],'kenya':['kenya','ke'],'nigeria':['nigeria','ng'],
           'united states':['united states','usa','us'],'united kingdom':['united kingdom','uk']}
  if criterion.lower() in aliases:return any(' '+x+' ' in text for x in aliases[criterion.lower()])
- return all(' '+t+' ' in text or (t.endswith('s') and ' '+t[:-1]+' ' in text) for t in terms if t not in ('and','or','in','the','years'))
+ return all(' '+t+' ' in text or ' '+t+'s ' in text or (t.endswith('s') and ' '+t[:-1]+' ' in text) for t in terms if t not in ('and','or','in','the','years'))
 
 def discovery_lead(result,role,location='',experience='',work_mode='',discipline='',period='',page_read=False):
  title=' '.join(str(result.get('title','')).split())
@@ -27,7 +27,8 @@ def discovery_lead(result,role,location='',experience='',work_mode='',discipline
  if re.search(r'\b(no longer accepting applications|position (?:has been |is )filled|job (?:has )?expired|vacancy closed)\b',text,re.I):return None
  parsed=urlparse(result['url'])
  if parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password:return None
- board=any(x in parsed.path.lower() for x in ('/search','-jobs','/jobs.html')) or parsed.path.rstrip('/')=='/jobs'
+ from job_discovery import is_search_page
+ board=is_search_page(result['url'],title)
  criteria={'Location':location,'Experience':experience,'Work mode':work_mode,'Discipline':discipline}
  noted=[f'{key}: {value} '+('(mentioned in search text)' if mentions(text,value) else '(not established)')
         for key,value in criteria.items() if value and not value.lower().startswith('any')]
