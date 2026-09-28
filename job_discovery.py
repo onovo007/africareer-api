@@ -37,7 +37,7 @@ def vacancy_candidate(result,work_mode=''):
     if re.search(r'^(how to|hire the best|guide to)|job description[s]? [0-9]{4}|step.by.step guide',title,re.I):return False
     text=title+' '+result.get('content','')
     if work_mode=='Remote' and not is_search_page(result.get('url',''),title):
-        if re.search(r'\b(no remote|not remote|remote (?:work )?(?:is )?not (?:available|permitted)|on.site only)\b',text,re.I):return False
+        if re.search(r'\b(no remote|not remote|remote\s+(?:job\s*)?:\s*(?:no|false)|remote (?:work )?(?:is )?not (?:available|permitted)|on.site only)\b',text,re.I):return False
     return True
 
 def relevance(result,role,discipline,location,work_mode):
