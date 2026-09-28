@@ -39,6 +39,10 @@ def discovery_lead(result,role,location='',experience='',work_mode='',discipline
              ('Page readable, but complete matching metadata was not available.' if page_read else 'Source page could not be independently read; it may require sign-in or block automated access.'))
 
 def explicitly_unavailable(html,role,work_mode='',now=None):
+ # Ignore script templates: translation dictionaries may contain closure messages.
+ visible=VisibleJobText();visible.feed(html)
+ text=' '.join(' '.join(visible.parts).split())
+ if re.search(r'\b(job not found|this (?:job|position|posting|vacancy) (?:is |has been |may have been )?(?:closed|removed|filled|no longer available)|no longer accepting applications)\b',text,re.I):return True
  now=now or datetime.now(timezone.utc);parser=JobSchemaParser();parser.feed(html)
  relevant=[]
  for script in parser.scripts:
@@ -50,6 +54,15 @@ def explicitly_unavailable(html,role,work_mode='',now=None):
    mode=str(job.get('jobLocationType','')).upper()
    relevant.append(bool(end and end<now) or (work_mode=='On-site' and mode=='TELECOMMUTE') or (work_mode=='Remote' and mode in ('ON_SITE','ONSITE')))
  return bool(relevant) and all(relevant)
+
+class VisibleJobText(HTMLParser):
+ def __init__(self):super().__init__();self.parts=[];self.hidden=0
+ def handle_starttag(self,tag,attrs):
+  if tag in ('script','style','template'):self.hidden+=1
+ def handle_endtag(self,tag):
+  if tag in ('script','style','template'):self.hidden=max(0,self.hidden-1)
+ def handle_data(self,data):
+  if not self.hidden:self.parts.append(data)
 
 class JobSchemaParser(HTMLParser):
  def __init__(self):super().__init__();self.capture=False;self.buffer=[];self.scripts=[]

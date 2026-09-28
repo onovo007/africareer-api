@@ -876,9 +876,9 @@ def find_jobs(role, discipline="", location="", experience="", work_mode="",
         except (ValueError,OSError,UnicodeError):return None
         html=public_html(result['url'],timeout=5)
         if html:
+            if explicitly_unavailable(html,role,work_mode):return None
             details=checked_posting(html,result['url'],role,location,experience,work_mode,discipline,period)
             if details:return {**details,'url':result['url'],'source':urlparse(result['url']).hostname,'verification_level':'posting_metadata'}
-            if explicitly_unavailable(html,role,work_mode):return None
         return discovery_lead(result,role,location,experience,work_mode,discipline,period,page_read=bool(html))
     with ThreadPoolExecutor(max_workers=4) as pool:
         found=[r for r in pool.map(inspect,uniq) if r]
