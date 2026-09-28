@@ -69,7 +69,10 @@ def opportunity_matches(result, opp_type, field, region):
            'Undergraduate / Masters':['undergraduate','bachelor','master','msc','m.sc','bsc']}
     if not any(re.search(r'\b'+re.escape(t)+r'\b',text) for t in types.get(opp_type, [opp_type.lower()])):
         return False
-    if re.search(r'\b(lecturer|faculty vacancy|postdoc|postdoctoral)\b',result.get('title',''),re.I):
+    if re.search(r'\b(lecturer|faculty vacancy|postdoc|postdoctoral|traineeship|internship)\b',result.get('title',''),re.I):
+        return False
+    # A doctoral eligibility requirement in the snippet does not make a role a PhD programme.
+    if opp_type == 'PhD / Doctorate' and not re.search(r'\b(phd|ph\.d|doctoral|doctorate)\b', result.get('title',''), re.I):
         return False
     if region and region!='Other':
         if not any(re.search(r'\b'+re.escape(t)+r'\b',text) for t in _REGION_TERMS.get(region,[region.lower()])):
