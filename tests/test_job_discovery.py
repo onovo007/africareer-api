@@ -76,3 +76,8 @@ class CoverageTests(unittest.TestCase):
   from job_discovery import canonical_url
   self.assertEqual(canonical_url('https://www.example.com/job/1'),canonical_url('https://example.com/job/1'))
   self.assertNotEqual(canonical_url('https://example.com/job?ref=1'),canonical_url('https://example.com/job?ref=2'))
+
+ def test_closed_page_text_without_metadata(self):
+  from job_verification import explicitly_unavailable
+  self.assertTrue(explicitly_unavailable('<h1>Job Not Found</h1><p>This posting may have been closed or removed.</p>','Data Scientist'))
+  self.assertFalse(explicitly_unavailable('<script>const label="Job Not Found"</script><h1>Data Scientist</h1>','Data Scientist'))
