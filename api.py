@@ -63,7 +63,11 @@ app.add_middleware(RequestSizeLimit)
 
 # CORS is added AFTER the limiter so it remains the OUTERMOST middleware and 429
 # responses still carry the CORS headers the browser needs in order to read them.
-_origins = [o.strip() for o in os.getenv("FRONTEND_ORIGIN", "https://africareer.quantiuminsights.com").split(",") if o.strip()]
+def cors_origins(value):
+    # Legacy deployments used '*'; never let that override the explicit default.
+    return [o.strip().rstrip('/') for o in value.split(',') if o.strip() and '*' not in o] or ['https://africareer.quantiuminsights.com']
+
+_origins = cors_origins(os.getenv("FRONTEND_ORIGIN", "https://africareer.quantiuminsights.com"))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins or ["https://africareer.quantiuminsights.com"],

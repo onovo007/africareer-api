@@ -634,6 +634,8 @@ def career_guidance(answers, language="English", include_evidence=False):
     answer = safe_llm_call(prompt, ctx, language)
     if not sources:
         answer = "**Source status: no verified primary document was retrieved. This is general guidance, not verified policy evidence.**\n\n" + answer
+    from quality import remove_unverified_free_course_claims
+    answer=remove_unverified_free_course_claims(answer)
     return {"text": answer, "evidence": evidence_status(sources)} if include_evidence else answer
 
 
@@ -684,10 +686,10 @@ def assistant_answer(question, language="English", include_evidence=False):
     answer = safe_llm_call(prompt, ctx, language)
     if not sources:
         answer = "**Source status: no verified primary document was retrieved. This is general guidance, not verified policy evidence.**\n\n" + answer
-    from quality import restrict_answer_links
+    from quality import restrict_answer_links, remove_unverified_free_course_claims
     allowed=[item['url'] for item in verified]
     allowed += re.findall(r'https?://[^\s]+', '\n'.join(sources))
-    answer=restrict_answer_links(answer,allowed)
+    answer=remove_unverified_free_course_claims(restrict_answer_links(answer,allowed))
     requested={'ILO':'ilo','African Development Bank':'african development bank','UNICEF':'unicef','UNESCO':'unesco'}
     missing=[name for name,term in requested.items() if (term in question.lower() or (name=='African Development Bank' and 'afdb' in question.lower())) and term not in sources_str.lower() and not (name=='African Development Bank' and 'afdb' in sources_str.lower())]
     if missing:answer='**Source coverage:** No verified document retrieved from '+', '.join(missing)+'. No page-level support is claimed for those organisations.\n\n'+answer

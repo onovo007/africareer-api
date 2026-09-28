@@ -60,6 +60,15 @@ def restrict_answer_links(answer, allowed):
                   lambda m:m.group(0) if m.group(2) in allowed else m.group(1)+' (link not verified)',answer)
     return re.sub(r'https?://[^\s<>\])]+',lambda m:m.group(0) if m.group(0).rstrip('.,;') in allowed else '[unverified link omitted]',answer)
 
+def remove_unverified_free_course_claims(answer):
+    # Guidance has no reviewed course-price payload. The dedicated catalogue does.
+    lines=[]
+    for line in answer.splitlines():
+        if re.search(r'\b(free|no.cost|gratuit\w*)\b',line,re.I) and re.search(r'\b(courses?|coursera|edx|udemy|khan academy|cours)\b',line,re.I):
+            line='Course prices are unverified in this answer. Use Learning Resources and its Free only filter for reviewed course-level terms; trials and certificates may have separate costs.'
+        lines.append(line)
+    return '\n'.join(lines)
+
 def job_matches(result, role, location='', experience='', work_mode='', discipline=''):
     """Conservative text match; still not proof of an open vacancy or eligibility."""
     url = urlparse(result.get('url', ''))
