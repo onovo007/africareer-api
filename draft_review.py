@@ -1,5 +1,5 @@
 """A second model review is a guard, not a factual accuracy certificate."""
-import json
+import json,re
 from datetime import datetime, timezone
 from quality import DraftValidationError, validate_cv_facts
 
@@ -28,11 +28,12 @@ def audited_draft(prompt, supplied, generate, parse, context='', completeness=Tr
                 'A supplied recent completion date must be preserved; do not substitute an earlier year. '
                 +('Reject omission of supplied qualifications, dates, experience and proficiency qualifiers. ' if completeness else 'A selective letter may omit irrelevant experience. Proposed research must be clearly prospective, not claimed completed work. ')+
                 'Before deciding, enumerate every concrete personal claim, including clauses inside longer sentences. '
-                'For each claim, quote its exact supporting words from SUPPLIED FACTS. Use an empty evidence string when absent and flag an issue. '
+                'For each claim, supply evidence as a LIST of short exact continuous substrings copied from SUPPLIED FACTS. '
+                'Use separate entries for facts in separate places. Never join fragments with ellipses or rewrite a quotation. Use an empty list when absent and flag an issue. '
                 'For example, secondary school in Ghana does NOT support studied mathematical problems, an encouraging school environment, additional resources, or particular subjects. '
                 'A quiz for 12 classmates does NOT establish that the entire class had 12 students. '
                 'Only clearly future proposals may have prospective=true and no evidence. '
-                'Return ONLY JSON {"passed": true or false, "issues": ["specific issue"], "claims": [{"claim":"draft claim", "evidence":"exact supplied quote", "prospective":false}]}. '
+                'Return ONLY JSON {"passed": true or false, "issues": ["specific issue"], "claims": [{"claim":"draft claim", "evidence":["exact supplied quote"], "prospective":false}]}. '
                 'Pass only if there are no issues. Do not provide a confidence score.\n'
                 'SUPPLIED FACTS:\n'+supplied+'\nDRAFT:\n'+json.dumps(draft,ensure_ascii=False))
             review=parse(generate(review_prompt,'','English'))
@@ -44,8 +45,10 @@ def audited_draft(prompt, supplied, generate, parse, context='', completeness=Tr
             for claim in claims:
                 if not isinstance(claim,dict):raise DraftValidationError('Invalid claim evidence ledger.')
                 if claim.get('prospective') is True:continue
-                evidence=claim.get('evidence','')
-                if not isinstance(evidence,str) or not evidence.strip() or evidence not in supplied:
+                evidence=claim.get('evidence',[])
+                if isinstance(evidence,str):evidence=[evidence]
+                normalize=lambda s:re.sub(r'\s+',' ',s).strip().casefold()
+                if not isinstance(evidence,list) or not evidence or any(not isinstance(q,str) or not q.strip() or normalize(q) not in normalize(supplied) for q in evidence):
                     raise DraftValidationError('Personal claim lacks an exact supplied source: '+str(claim.get('claim',''))[:300])
             return draft
         except (ValueError,TypeError,KeyError) as error:
