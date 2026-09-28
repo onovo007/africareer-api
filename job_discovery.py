@@ -19,8 +19,8 @@ def canonical_url(url):
         p=urlsplit(url)
         if p.scheme!='https' or not p.hostname or p.username or p.password:return None
         query=[(k,v) for k,v in parse_qsl(p.query,keep_blank_values=True)
-               if not k.lower().startswith('utm_') and k.lower() not in ('fbclid','gclid','source','ref')]
-        return urlunsplit((p.scheme,p.netloc.lower(),p.path.rstrip('/') or '/',urlencode(sorted(query)),''))
+               if not k.lower().startswith('utm_') and k.lower() not in ('fbclid','gclid')]
+        return urlunsplit((p.scheme,p.netloc.lower().removeprefix('www.'),p.path.rstrip('/') or '/',urlencode(sorted(query)),''))
     except ValueError:return None
 
 def is_search_page(url,title=''):
@@ -28,8 +28,17 @@ def is_search_page(url,title=''):
     if host=='ziprecruiter.com' and path.startswith('/jobs/'):return True
     if 'remoterocketship.com' in host and '/jobs/' in path:return True
     return (path in ('','/','/jobs','/careers','/vacancies') or
-            any(x in path for x in ('/search','-jobs.html','/jobs-at/','/jobs/page/')) or
+            any(x in path for x in ('/search','-jobs.html','/jobs-at/','/jobs/page/','/skills/')) or
             bool(re.search(r'\bjobs (in|near|available|–|\|)|\bjobs, employment',title,re.I)))
+
+def vacancy_candidate(result,work_mode=''):
+    title=result.get('title','');path=urlsplit(result.get('url','')).path.lower()
+    if any(x in path for x in ('/news/','/blog/','/hire/','/job-descriptions/','/career-advice/')):return False
+    if re.search(r'^(how to|hire the best|guide to)|job description[s]? [0-9]{4}|step.by.step guide',title,re.I):return False
+    text=title+' '+result.get('content','')
+    if work_mode=='Remote' and not is_search_page(result.get('url',''),title):
+        if re.search(r'\b(no remote|not remote|remote (?:work )?(?:is )?not (?:available|permitted)|on.site only)\b',text,re.I):return False
+    return True
 
 def relevance(result,role,discipline,location,work_mode):
     title=result.get('title','');text=title+' '+result.get('content',result.get('snippet',''))
@@ -42,7 +51,7 @@ def discover(search,role,discipline,location,work_mode,period,include_ngo,ngo_do
     exact=' '.join(x for x in (role,discipline,location,mode,'vacancy apply') if x)
     broad=' '.join(x for x in (role,location,mode,'job responsibilities qualifications apply') if x)
     regional=next((domains for pattern,domains in REGIONS if re.search(pattern,location,re.I)),None)
-    channels=[('Web vacancies',exact,None),('Employer recruitment sites',broad,EMPLOYER_DOMAINS),
+    channels=[('Web vacancies',exact,None),('Employer recruitment sites',exact,EMPLOYER_DOMAINS),
               ('Regional job boards' if regional else 'Additional vacancy discovery',broad,regional)]
     if include_ngo:channels.append(('NGO and international organisations',exact,ngo_domains))
     recency={'Past 24 hours':'day','Past week':'week','Past month':'month'}.get(period,'')
@@ -58,9 +67,9 @@ def discover(search,role,discipline,location,work_mode,period,include_ngo,ngo_do
         for item in items:
             key=canonical_url(item.get('url',''))
             if not key:continue
-            if key not in unique:unique[key]={**item,'url':key,'discovery_channels':[label]}
+            if key not in unique:unique[key]={**item,'discovery_channels':[label]}
             elif label not in unique[key]['discovery_channels']:unique[key]['discovery_channels'].append(label)
-    candidates=[r for r in unique.values() if mentions(r.get('title','')+' '+r.get('content',''),role)]
+    candidates=[r for r in unique.values() if vacancy_candidate(r,work_mode) and mentions(r.get('title','')+' '+r.get('content',''),role)]
     candidates.sort(key=lambda r:(is_search_page(r['url'],r.get('title','')),-relevance(r,role,discipline,location,mode)))
     # Reserve room for other publishers; never let one aggregator consume the batch.
     counts=Counter();chosen=[];overflow=[]
