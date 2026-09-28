@@ -122,4 +122,7 @@ class RemediationTests(unittest.TestCase):
   headers['Origin']='https://unknown.example'
   self.assertEqual(self.client.options('/assistant',headers=headers).status_code,400)
 
+ def test_phd_search_excludes_traineeship_with_doctoral_eligibility(self):
+  self.assertFalse(opportunity_matches({'title':'ECDC Traineeship Programme 2027', 'content':'Public health graduates with a PhD may apply in Europe', 'url':'https://example.org/apply'},'PhD / Doctorate','public health','Europe'))
+
 if __name__=='__main__':unittest.main()
