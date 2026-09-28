@@ -19,6 +19,8 @@ def audited_draft(prompt, supplied, generate, parse, context='', completeness=Tr
                 'Check ALL personal claims, including names, roles, dates, expected graduation, volunteering, '
                 'skill/language proficiency, metrics, qualifications, awards, publications and supervision. '
                 'Reject upgrades, invented facts, misleading implications, unsupported citations or organisation claims. '
+                'Check every experiential detail: school subjects, peer feedback, obstacles, learning outcomes, chronology, training topics, and advertised-vacancy claims require explicit support. '
+                'A plausible detail is still invented when absent from the supplied facts. In particular, working for two years and completing a degree does not establish that the work was after the degree. '
                 'Flag only concrete factual errors or required omissions, not stylistic preferences. '
                 'Do not invent corrections: a role start date is not the date of every achievement in that role. '
                 'Negative facts such as no paid employment or no prizes constrain the draft but need not be printed. '

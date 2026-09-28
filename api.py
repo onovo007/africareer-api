@@ -8,12 +8,14 @@ Docs:          http://localhost:8000/docs
 Env vars: OPENAI_API_KEY, PINECONE_API_KEY, TAVILY_API_KEY (optional),
           API_AUTH_TOKEN (optional gate), FRONTEND_ORIGIN (CORS; comma-separated).
 """
+import json
 import io
 import os
 import secrets
 import zipfile
 from uuid import UUID, uuid4
 from feedback_store import save_feedback
+from cv_schema import CV, checked_cv
 from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException, Depends, UploadFile, File, Request
@@ -356,3 +358,35 @@ def application_document(body: ApplicationExportIn):
     from quality import validate_cv_facts
     validate_cv_facts({'sections':[{'text':x['text']} for x in sections]}, '\n'.join([body.background,body.prog_info,body.full_name,body.contact_line,body.school,body.programme]))
     return _docx_response(render_application({'rules':rules,'sections':sections}), 'AfriCareer_Application_Draft.docx')
+
+
+class CvDraftIn(BaseModel):
+    source: Literal['answers','resume']
+    content: str
+    feedback: str=''
+    full_name: str=''
+    contact_line: str=''
+
+class CvExportIn(BaseModel):
+    cv: CV
+    supplied_facts: str
+    confirmed: bool=False
+
+@app.post('/cv/draft', dependencies=[Depends(require_auth)])
+def cv_draft(body: CvDraftIn):
+    if body.source=='answers':
+        cv=core.draft_cv_from_answers(body.content,body.full_name,body.contact_line)
+        facts='\n'.join([body.content,body.full_name,body.contact_line])
+    else:
+        cv=core.draft_cv_from_resume(body.content,body.feedback)
+        facts=body.content
+    return {'cv':cv,'supplied_facts':facts,'review_notice':'Compare the draft with your original facts. Automated checks can miss errors. Edits require your review before export.'}
+
+@app.post('/cv/document', dependencies=[Depends(require_auth)])
+def cv_document(body: CvExportIn):
+    if not body.confirmed:
+        raise HTTPException(status_code=422,detail='Confirm that you reviewed your CV before downloading.')
+    from quality import validate_cv_facts
+    cv=checked_cv(body.cv.model_dump())
+    validate_cv_facts(cv,body.supplied_facts)
+    return _docx_response(core.generate_premium_cv_docx(json.dumps(cv)),'AfriCareer_Reviewed_CV.docx')

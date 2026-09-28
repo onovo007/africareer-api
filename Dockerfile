@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
-COPY core.py api.py guards.py link_safety.py quality.py course_catalog.py evidence.py draft_review.py applications.py feedback_store.py job_verification.py knowledge_sources.json ./
+COPY core.py api.py cv_schema.py guards.py link_safety.py quality.py course_catalog.py evidence.py draft_review.py applications.py feedback_store.py job_verification.py knowledge_sources.json ./
 RUN useradd --create-home appuser
 USER appuser
 

@@ -33,6 +33,7 @@ from quality import validate_cv_facts, primary_source, job_matches
 from course_catalog import reviewed_courses
 from evidence import reference_context, evidence_status
 from draft_review import audited_draft
+from cv_schema import checked_cv
 from applications import application_rules, check_sections, render_application
 
 APP_NAME = "AfriCareer AI"
@@ -491,7 +492,13 @@ def generate_premium_cv_docx(cv_json_str):
     if cv.get("projects"):
         heading("Selected Projects & Deployments")
         for proj in cv["projects"]:
-            bullet(proj)
+            if isinstance(proj, dict):
+                title = " | ".join(str(proj[k]) for k in ('title', 'dates') if proj.get(k))
+                if title: bullet(title, size=11)
+                for detail in proj.get('bullets', []): bullet(str(detail))
+                if proj.get('description'): bullet(str(proj['description']))
+            else:
+                bullet(str(proj))
 
     if cv.get("certifications"):
         heading("Certifications & Training")
@@ -697,12 +704,12 @@ _CV_SCHEMA = """{
   "core_competencies": ["Only skills explicitly supplied; fewer is fine"],
   "work_experience": [{"title": "", "company": "", "location": "", "dates": "", "bullets": ["achievement bullets"]}],
   "education": [{"degree": "", "institution": "", "dates": ""}],
-  "publications": [], "projects": [], "certifications": [],
+  "publications": [], "projects": [{"title": "", "dates": "", "bullets": ["Only the supplied project facts"]}], "certifications": [],
   "technical_skills": "comma-separated tools", "languages": []
 }"""
 
 
-def build_cv_from_resume(resume_text, feedback="", language="English"):
+def draft_cv_from_resume(resume_text, feedback="", language="English"):
     """Return DOCX bytes for an improved CV built from an existing resume + analysis feedback."""
     ctx = retrieve_career_guidance("professional CV resume best practices African job market ATS optimization")
     prompt = (f"You are a professional CV writer for the African job market.\n\n"
@@ -712,11 +719,11 @@ def build_cv_from_resume(resume_text, feedback="", language="English"):
               "Feedback is editorial advice, NEVER evidence of an achievement. Use numbers, languages and proficiency levels ONLY as supplied in the original resume. "
               "Do not infer metrics, duration of experience, budgets, impact, certifications or skills. Preserve all dates and beginner levels. "
               "Improve wording without adding facts; never use placeholder brackets; return ONLY the JSON.")
-    cv = audited_draft(prompt, resume_text, document_llm_call, _extract_json)
-    return generate_premium_cv_docx(json.dumps(cv))
+    cv = audited_draft(prompt, resume_text, document_llm_call, _extract_json, validator=checked_cv)
+    return checked_cv(cv)
 
 
-def build_cv_from_answers(answers, full_name="", contact_line="", language="English"):
+def draft_cv_from_answers(answers, full_name="", contact_line="", language="English"):
     """Return DOCX bytes for a CV built from the 5-question profile (no invention)."""
     ctx = retrieve_career_guidance("professional CV resume best practices African job market ATS optimization")
     prompt = (f"You are a professional CV writer creating an ATS CV from a jobseeker's answers.\n\n"
@@ -728,11 +735,19 @@ def build_cv_from_answers(answers, full_name="", contact_line="", language="Engl
               "Preserve expected graduation dates and student status; include volunteer work and projects with their dates. "
               "Preserve language proficiency verbatim. Do not turn fluent into native or beginner into proficient. "
               "NEVER output placeholder brackets like [Your Name] - omit unknown fields; return ONLY the JSON.")
-    cv = audited_draft(prompt, answers + '\n' + full_name + '\n' + contact_line, document_llm_call, _extract_json)
+    cv = audited_draft(prompt, answers + '\n' + full_name + '\n' + contact_line, document_llm_call, _extract_json, validator=checked_cv)
     cv['education_first'] = bool(re.search(r'\b(student|expected|undergraduate)\b', answers, re.I))
     cv['full_name'] = full_name
     cv['contact_line'] = contact_line
-    return generate_premium_cv_docx(json.dumps(cv))
+    return checked_cv(cv)
+
+
+def build_cv_from_resume(resume_text, feedback="", language="English"):
+    return generate_premium_cv_docx(json.dumps(draft_cv_from_resume(resume_text, feedback, language)))
+
+
+def build_cv_from_answers(answers, full_name="", contact_line="", language="English"):
+    return generate_premium_cv_docx(json.dumps(draft_cv_from_answers(answers, full_name, contact_line, language)))
 
 
 def build_cover_letter(resume_text, position, company, city=""):
@@ -753,7 +768,7 @@ def build_cover_letter(resume_text, position, company, city=""):
               '"Explain the candidate’s interest in the role without unsupported organisation claims.",'
               '"Close: reaffirm interest, availability, invite an interview."], '
               '"closing_line": "Respectfully submitted,", "signature_name": "", "signature_title": "", "signature_contact": ""}\n\n'
-              "RULES: use ONLY factual details from the resume; do NOT invent; return ONLY the JSON.")
+              "RULES: use ONLY factual details from the resume; do NOT invent; do not claim the role is advertised or that you know its requirements without a supplied job description. Return ONLY the JSON.")
     facts = resume_text + '\nTarget: ' + position + '\nCompany: ' + company + '\nLocation: ' + city + '\nDate: ' + datetime.now().strftime('%B %d, %Y')
     draft = audited_draft(prompt, facts, document_llm_call, _extract_json, completeness=False)
     return generate_premium_cover_letter_docx(json.dumps(draft))
@@ -765,7 +780,9 @@ def application_draft(category, school, programme, background, prog_info='', ful
     facts = '\n'.join([background, full_name, contact_line, school, programme, prog_info])
     prompt = ("Create an application writing draft from ONLY the supplied facts. No policy-framework citations, "
               "invented achievements, named supervisors, completed research or claims about the institution. "
-              "Use the applicant's specific examples and reflection. A research proposal must separate planned work "
+              "Use only supplied examples and reflections. Do not invent subjects studied, project obstacles, feedback from peers, feelings, learning outcomes, or chronology such as after my degree. "
+              "Unknown reflections must be expressed as future interests or omitted. Do not infer that research-assistant work occurred after a degree without explicit dates. "
+              "A research proposal must separate planned work "
               "from completed work and flag unanswered design choices in ordinary prose. "
               "For UCAS address the subject across all choices, not a single university. "
               "For a statement or UCAS omit greeting, address, signature and date. "
