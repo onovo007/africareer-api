@@ -1,15 +1,16 @@
-# AfriCareer AI backend (FastAPI). Pinned for reproducible builds.
-fastapi==0.115.5
+# Runtime dependencies pinned for the September 2026 pilot review.
+fastapi==0.141.1
+starlette==1.7.0
 uvicorn[standard]==0.32.1
-python-multipart==0.0.12
+python-multipart==0.0.32
 pydantic==2.9.2
-openai==1.54.4
+openai==3.19.2
 httpx==0.27.2
-langchain==0.3.7
-langchain-openai==0.2.8
-langchain-core==0.3.19
+langchain-openai==1.6.6
+langchain-core==1.6.5
+langsmith==0.14.1
 pinecone==5.4.2
-PyPDF2==3.0.1
+pypdf==6.19.0
 python-docx==1.1.2
-python-dotenv==1.0.1
+python-dotenv==1.2.3
 slowapi==0.1.9

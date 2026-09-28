@@ -1,5 +1,5 @@
 # AfriCareer AI backend API - deploy to Render, Railway, Fly.io, or any container host
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -8,7 +8,9 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
-COPY core.py api.py ./
+COPY core.py api.py guards.py link_safety.py quality.py course_catalog.py evidence.py draft_review.py applications.py feedback_store.py job_verification.py knowledge_sources.json ./
+RUN useradd --create-home appuser
+USER appuser
 
 # Hosts inject $PORT; default to 8000 for local runs.
 ENV PORT=8000
