@@ -21,3 +21,38 @@ class JobDiscoveryTests(unittest.TestCase):
   self.assertIsNotNone(checked_posting(html,'https://example.com/job/1','Data Scientist',location='Maryland'))
  def test_unrelated_lead_excluded(self):
   self.assertIsNone(discovery_lead({'url':'https://example.com/1','title':'Nurse','content':'Hospital'},'Data Scientist'))
+
+class CoverageTests(unittest.TestCase):
+ def test_parallel_channels_and_region_routing(self):
+  from job_discovery import discover
+  calls=[]
+  def search(q,**kw):calls.append((q,kw));return []
+  r,w,c=discover(search,'Nurse','','Nairobi','Any','Past week',True,['unicef.org'])
+  self.assertEqual(len(c),4);self.assertTrue(any(x[1]['domains']==['brightermonday.co.ke','myjobmag.co.ke'] for x in calls))
+  self.assertTrue(all(x[1]['time_range']=='week' for x in calls))
+ def test_one_channel_failure_preserves_others(self):
+  from job_discovery import discover
+  def search(q,**kw):
+   if kw['domains']:raise RuntimeError('offline')
+   return [{'title':'Nurse','url':'https://hospital.example/job/1','content':'Kenya'}]
+  r,w,c=discover(search,'Nurse','','Kenya','Any','',False,[])
+  self.assertEqual(len(r),1);self.assertEqual(len(w),2)
+ def test_tracking_duplicates_preserve_job_identifiers(self):
+  from job_discovery import canonical_url
+  self.assertEqual(canonical_url('https://example.com/job?id=1&utm_source=test#apply'),canonical_url('https://example.com/job?id=1'))
+  self.assertNotEqual(canonical_url('https://example.com/job?id=1'),canonical_url('https://example.com/job?id=2'))
+ def test_individual_vacancy_precedes_board_pages(self):
+  from job_discovery import discover,is_search_page
+  items=[{'title':'Nurse Jobs in Kenya','url':'https://example.com/jobs','content':'Nurse'}, {'title':'Registered Nurse','url':'https://hospital.example/job/123','content':'Kenya'}]
+  r,w,c=discover(lambda *a,**k:items,'Nurse','','Kenya','Any','',False,[])
+  self.assertEqual(r[0]['title'],'Registered Nurse')
+  self.assertTrue(is_search_page('https://www.ziprecruiter.com/Jobs/Nurse/--in-Kenya'))
+ def test_domain_diversity_and_candidate_budget(self):
+  from job_discovery import discover
+  items=[{'title':'Nurse','url':f'https://board.example/job/{i}','content':'Kenya'} for i in range(30)]
+  items.append({'title':'Nurse','url':'https://hospital.example/job/1','content':'Kenya'})
+  r,w,c=discover(lambda *a,**k:items,'Nurse','','Kenya','Any','',False,[])
+  self.assertLessEqual(len(r),24);self.assertIn('hospital.example',r[4]['url'])
+ def test_plural_role_match(self):
+  from job_verification import mentions
+  self.assertTrue(mentions('Data Scientists','Data Scientist'))
