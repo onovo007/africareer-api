@@ -152,5 +152,26 @@ class RemediationTests(unittest.TestCase):
   body={'cv':{'work_experience':[{'title':['wrong type']}]},'supplied_facts':'Analyst','confirmed':True}
   self.assertEqual(self.client.post('/cv/document',json=body).status_code,422)
 
+ def test_assistant_links_must_be_in_supplied_sources(self):
+  from quality import restrict_answer_links
+  text='[Source](https://primary.example/doc) [Guess](https://invented.example/job) https://invented.example/raw'
+  result=restrict_answer_links(text,['https://primary.example/doc'])
+  self.assertIn('[Source](https://primary.example/doc)',result)
+  self.assertNotIn('https://invented.example',result)
+
+ def test_cv_detail_expansion_and_missing_proficiency_are_blocked(self):
+  from quality import validate_cv_details
+  source='Coordinated training for 18 staff. Skills: Excel, Power BI beginner.'
+  with self.assertRaises(DraftValidationError):
+   validate_cv_details({'work_experience':[{'bullets':['Coordinated training for 18 staff on reporting']}],'technical_skills':'Excel, Power BI beginner'},source)
+  with self.assertRaises(DraftValidationError):
+   validate_cv_details({'work_experience':[{'bullets':['Coordinated training for 18 staff']}],'technical_skills':'Excel'},source)
+  validate_cv_details({'work_experience':[{'bullets':['Coordinated training for 18 staff']}],'technical_skills':'Excel, Power BI beginner'},source)
+
+ def test_ucas_heading_is_not_duplicated_in_answer(self):
+  rules=application_rules('Undergraduate program','Oxford','Maths')
+  sections,_=check_sections([{'text':h+'\n'+'a'*360} for h in rules['headings']],rules)
+  self.assertEqual(sections[0]['text'],'a'*360)
+
 if __name__=='__main__':unittest.main()
 
