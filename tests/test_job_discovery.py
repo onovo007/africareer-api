@@ -66,3 +66,13 @@ class CoverageTests(unittest.TestCase):
    for node in ast.walk(ast.parse((root/file).read_text(encoding='utf-8'))):
     if isinstance(node,ast.ImportFrom) and node.module and (root/(node.module+'.py')).exists():
      self.assertIn(node.module+'.py',docker)
+
+ def test_articles_and_explicit_remote_conflicts_excluded(self):
+  from job_discovery import vacancy_candidate
+  self.assertFalse(vacancy_candidate({'title':'How to Get a Data Analyst Job','url':'https://example.com/guide'}))
+  self.assertFalse(vacancy_candidate({'title':'Data Scientist (No Remote)','url':'https://example.com/job/1'},'Remote'))
+  self.assertTrue(vacancy_candidate({'title':'Data Scientist','url':'https://example.com/job/1'},'Remote'))
+ def test_www_duplicate_and_reference_preserved(self):
+  from job_discovery import canonical_url
+  self.assertEqual(canonical_url('https://www.example.com/job/1'),canonical_url('https://example.com/job/1'))
+  self.assertNotEqual(canonical_url('https://example.com/job?ref=1'),canonical_url('https://example.com/job?ref=2'))
