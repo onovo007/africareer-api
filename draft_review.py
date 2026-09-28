@@ -3,9 +3,9 @@ import json,re
 from datetime import datetime, timezone
 from quality import DraftValidationError, validate_cv_facts
 
-def audited_draft(prompt, supplied, generate, parse, context='', completeness=True, validator=None):
+def audited_draft(prompt, supplied, generate, parse, context='', completeness=True, validator=None, max_attempts=3):
     problems=''
-    for attempt in range(3):
+    for attempt in range(max_attempts):
         try:
             raw=generate(prompt+'\n'+problems,context,'English')
             draft=parse(raw)

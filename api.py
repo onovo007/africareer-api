@@ -211,7 +211,7 @@ async def draft_error(request: Request, error: DraftValidationError):
 @limiter.exempt
 def health():
     return {"status": "ok", "service": "africareer-api", "release": "pilot-remediation-20260928", "tavily": bool(core.TAVILY_API_KEY),
-            "supabase": bool(core.SUPABASE_URL and core.SUPABASE_KEY)}
+            "supabase": bool(core.SUPABASE_URL and core.SUPABASE_KEY), "models": core.model_configuration()}
 
 
 @app.post("/event")

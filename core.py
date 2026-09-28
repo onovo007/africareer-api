@@ -152,12 +152,30 @@ _embeddings = None
 _llm = None
 
 
+def model_configuration():
+    """Public model identifiers only; never expose provider credentials."""
+    return {"general": os.getenv("GENERAL_MODEL", "gpt-6-sol"),
+            "document": os.getenv("DOCUMENT_MODEL", "gpt-6-sol"),
+            "doctoral": os.getenv("DOCTORAL_MODEL", "gpt-6-astra")}
+
+
+@lru_cache(maxsize=8)
+def _configured_llm(model, document=False):
+    options = dict(model=model, openai_api_key=OPENAI_API_KEY, timeout=60,
+                   max_retries=0, max_tokens=6000 if document else 1800)
+    if model.startswith("gpt-6-astra"):
+        options.update(reasoning_effort="low", temperature=None)
+    else:
+        options["temperature"] = 0 if document else 0.3
+        if model.startswith("gpt-6-sol"):
+            options["reasoning_effort"] = "none"
+    if document:
+        options["model_kwargs"] = {"response_format": {"type": "json_object"}}
+    return ChatOpenAI(**options)
+
+
 def _llm_client():
-    global _llm
-    if _llm is None:
-        _llm = ChatOpenAI(temperature=0.3, model="gpt-4o-mini", openai_api_key=OPENAI_API_KEY,
-                         timeout=60, max_retries=1)
-    return _llm
+    return _configured_llm(model_configuration()["general"])
 
 
 def _clients():
@@ -186,18 +204,15 @@ Do not describe an entire course platform (including Coursera or edX) as free. A
 RESPONSE STYLE: be practical, specific and actionable; cite only the supplied reference when it supports the particular claim; respect its jurisdiction, date and limitations; ground advice in the African context; be supportive and encouraging; never invent facts about a person, employer, or institution."""
 
 
-@lru_cache(maxsize=1)
 def _document_llm_client():
-    return ChatOpenAI(temperature=0, model=os.getenv("DOCUMENT_MODEL", "gpt-4.1-2025-04-14"),
-                      openai_api_key=OPENAI_API_KEY, timeout=45, max_retries=1,
-                      model_kwargs={"response_format": {"type": "json_object"}})
+    return _configured_llm(model_configuration()["document"], True)
 
 
 def document_llm_call(prompt, context="", language="English"):
     return safe_llm_call(prompt, context, language, document=True)
 
 
-def safe_llm_call(user_prompt, rag_context="", language="English", document=False):
+def safe_llm_call(user_prompt, rag_context="", language="English", document=False, model=None):
     """Single LLM entry point with the safety system message and optional RAG grounding."""
     system_message = SystemMessage(content=SAFETY_SYSTEM_MESSAGE + f"\nCurrent UTC date: {datetime.now(timezone.utc).date().isoformat()}. Use this date rather than your training cutoff.")
     if rag_context:
@@ -209,7 +224,11 @@ def safe_llm_call(user_prompt, rag_context="", language="English", document=Fals
     else:
         full_prompt = f"Language: {language}\n\nUSER REQUEST:\n{user_prompt}\n\nProvide your response in {language}."
     try:
-        return (_document_llm_client() if document else _llm_client()).invoke([system_message, HumanMessage(content=full_prompt)]).content
+        client = _configured_llm(model, document) if model else (_document_llm_client() if document else _llm_client())
+        response = client.invoke([system_message, HumanMessage(content=full_prompt)])
+        if getattr(response, 'response_metadata', {}).get('finish_reason') == 'length':
+            raise ValueError('Generation exceeded the output limit')
+        return response.content
     except Exception as e:
         raise RuntimeError("Generation provider unavailable") from None
 
@@ -806,7 +825,11 @@ def application_draft(category, school, programme, background, prog_info='', ful
               f"RULES (count spaces in characters; UCAS each answer minimum 350): {json.dumps(rules)}\n"
               f"LENGTH TARGET: Keep total prose under {int(rules['max_characters'] * .75) if rules.get('max_characters') else 3000} characters to leave room below the hard cap. Count all sections together. "
               f"SUPPLIED FACTS: {facts}")
-    draft = audited_draft(prompt, facts, document_llm_call, _extract_json, completeness=False, validator=lambda d:check_sections(d.get('sections'),rules))
+    # Route from explicit application fields, never from retrieved content or CV history.
+    doctoral = bool(re.search(r'\b(ph\.?\s*d\.?|doctorate|doctoral|dphil)\b', category + ' ' + programme, re.I))
+    generate = (lambda p, c='', l='English': safe_llm_call(p, c, l, document=True,
+                model=model_configuration()['doctoral'])) if doctoral else document_llm_call
+    draft = audited_draft(prompt, facts, generate, _extract_json, completeness=False, validator=lambda d:check_sections(d.get('sections'),rules), max_attempts=2 if doctoral else 3)
     sections, counts = check_sections(draft.get('sections'), rules)
     return {'sections': sections, 'counts': counts, 'rules': rules,
             'review_notice': 'Automated checks passed; you must still verify every claim, authorship rules and the current application portal.'}
