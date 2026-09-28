@@ -27,4 +27,4 @@ def audited_draft(prompt, supplied, generate, parse, context='', completeness=Tr
             return draft
         except (ValueError,TypeError,KeyError) as error:
             problems='Revise the draft to resolve these checks without inventing replacement facts: '+str(error)[:1400]
-    raise DraftValidationError('The draft did not pass factual and completeness checks after a revision. No document was downloaded. Add clear dates, proficiency levels and supporting examples, then retry.')
+    raise DraftValidationError('The draft did not pass checks after a revision. No document was downloaded. '+problems[:1000])
