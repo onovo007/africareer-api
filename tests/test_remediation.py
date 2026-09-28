@@ -110,4 +110,16 @@ class RemediationTests(unittest.TestCase):
   self.assertIsNone(check(dict(job,datePosted=None)))
   self.assertIsNone(check(dict(job,jobLocationType='ON_SITE')))
 
+
+ def test_legacy_course_price_alias_never_invokes_model(self):
+  with patch.object(core,'verify_url',return_value=True),patch.object(core,'safe_llm_call') as model:
+   self.assertTrue(core.find_courses('Python','Beginner','Free'))
+   self.assertTrue(core.find_courses('Excel','Intermediate','Paid'))
+   model.assert_not_called()
+ def test_production_cors_is_explicit_and_untrusted_origin_denied(self):
+  headers={'Origin':'https://africareer.quantiuminsights.com','Access-Control-Request-Method':'POST'}
+  self.assertEqual(self.client.options('/assistant',headers=headers).status_code,200)
+  headers['Origin']='https://unknown.example'
+  self.assertEqual(self.client.options('/assistant',headers=headers).status_code,400)
+
 if __name__=='__main__':unittest.main()
